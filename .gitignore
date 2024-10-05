@@ -33,3 +33,10 @@
 
 # cmake-build-debug directory
 cmake-build-debug/
+
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+/out/

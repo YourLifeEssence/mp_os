@@ -3,13 +3,13 @@
 #include "../include/client_logger.h"
 
 client_logger::client_logger(
-    client_logger const &other)
+    const client_logger &other)
 {
     throw not_implemented("client_logger::client_logger(client_logger const &other)", "your code should be here...");
 }
 
 client_logger &client_logger::operator=(
-    client_logger const &other)
+    const client_logger &other)
 {
     throw not_implemented("client_logger &client_logger::operator=(client_logger const &other)", "your code should be here...");
 }
@@ -31,7 +31,7 @@ client_logger::~client_logger() noexcept
     throw not_implemented("client_logger::~client_logger() noexcept", "your code should be here...");
 }
 
-logger const *client_logger::log(
+const logger *client_logger::log(
     const std::string &text,
     logger::severity severity) const noexcept
 {

@@ -24,29 +24,30 @@ public:
 
 public:
 
-    virtual logger const *log(
+    virtual const logger *log(
         std::string const &message,
         logger::severity severity) const noexcept = 0;
 
 public:
 
-    logger const *trace(
-        std::string const &message) const noexcept;
+    const logger *trace(
+        const std::string &message) const noexcept;
 
-    logger const *debug(
-        std::string const &message) const noexcept;
+    const logger* debug(
+        const std::string& message) const noexcept;
 
-    logger const *information(
-        std::string const &message) const noexcept;
+    const logger* information(
+        const std::string& message) const noexcept;
 
-    logger const *warning(
-        std::string const &message) const noexcept;
+    const logger* warning(
+        const std::string& message) const noexcept;
 
-    logger const *error(
-        std::string const &message) const noexcept;
+    const logger* error(
+        const std::string& message) const noexcept;
 
-    logger const *critical(
-        std::string const &message) const noexcept;
+    const logger* critical(
+        const std::string& message) const noexcept;
+
 
 protected:
 

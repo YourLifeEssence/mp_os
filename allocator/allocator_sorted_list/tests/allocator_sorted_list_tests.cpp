@@ -267,6 +267,12 @@ int main(
     char **argv)
 {
     testing::InitGoogleTest(&argc, argv);
-    
+
+    allocator_sorted_list Obj1(100,nullptr, nullptr, allocator_with_fit_mode::fit_mode::first_fit);
+
+    void *ptr2, *ptr1 = Obj1.allocate(4, 10);
+
+    Obj1.deallocate(ptr1);
+
     return RUN_ALL_TESTS();
 }

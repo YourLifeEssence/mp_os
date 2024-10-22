@@ -132,11 +132,11 @@ allocator_sorted_list::allocator_sorted_list(
         }
     }
 
-    //¬ышли из блока, локальные ненужные переменные выпилились
-    //–еализовать выделени€ блоков
-    //ѕо логике: ќткусываем блок слева, с самого первого нашего блока мета данные заполн€ем, отдел€ем какой то кусок пам€ти, и после этого куска пам€ти снова ставим мета данные
+    //Left the block, local variables are not needed
+    //Implement block allocation
+    //Logically: We take the block on the left, from the first of our block meta data fill, separate some piece of memory, and after this piece of memory put again the data meta
 
-    //*reinterpret_cast<void**>(target_block) = obtain_next_available_block_address(target_block); //”казатель на следующий свободный блок
+    //*reinterpret_cast<void**>(target_block) = obtain_next_available_block_address(target_block);  //Pointer to next free block
 
     if (target_block == nullptr)
     {
@@ -176,6 +176,10 @@ allocator_sorted_list::allocator_sorted_list(
             obtain_first_available_block_address_byref() = next_block;
         }
     }
+
+    void* trusted_memory_pointer = _trusted_memory;
+    *reinterpret_cast<void**>(target_block) = trusted_memory_pointer;
+    *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(target_block) + sizeof(void*)) = target_block_size;
 
     // TODO: You can do it! :)
 

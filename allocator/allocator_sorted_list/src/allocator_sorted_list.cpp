@@ -55,7 +55,7 @@ allocator_sorted_list::allocator_sorted_list(
     }
     catch (std::bad_alloc const& ex)
     {
-        // TODO: ëîãè î÷åíü õîòÿò, ÷òîáû èõ çàïèñàëè =)
+        // TODO: logs ....   =)
 
         throw;
     }
@@ -89,7 +89,7 @@ allocator_sorted_list::allocator_sorted_list(
 
     *reinterpret_cast<size_t*>(reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) + 1) = space_size - available_block_metadata_size();
 
-    // TODO: ëîãè âñ¸ åù¸ î÷åíü õîòÿò, ÷òîáû èõ çàïèñàëè =)
+    // TODO: logs ....  =)
 }
 
 [[nodiscard]] void* allocator_sorted_list::allocate(
@@ -101,7 +101,7 @@ allocator_sorted_list::allocator_sorted_list(
     throw_if_allocator_instance_state_was_moved();
 
     void* target_block = nullptr, * previous_to_target_block = nullptr;
-    size_t requested_size = value_size * values_count + ancillary_block_metadata_size();
+    size_t requested_size = value_size * values_count + ancillary_block_metadata_size(); 
     size_t target_block_size;
 
     {
@@ -143,20 +143,20 @@ allocator_sorted_list::allocator_sorted_list(
 
     if (target_block == nullptr)
     {
-        // TODO: ëîãè òèïî òàêèå: íàïèøèòå íàñ ïëèç =)
+        // TODO: logs ....  =)
 
         throw std::bad_alloc();
     }
 
     void* next_block = obtain_next_available_block_address(target_block);
-    bool remaining_part_left = target_block_size >= requested_size - ancillary_block_metadata_size();
+    //was: target_block_size >= requested_size - ancillary_block_metadata_size();
+    bool remaining_part_left = target_block_size >= requested_size;
     void* remaining_block;
 
     if (remaining_part_left)
     {
         remaining_block = reinterpret_cast<void*>(reinterpret_cast<unsigned char*>(target_block)
-            + requested_size
-            /*+ available_block_metadata_size()*/);
+            + requested_size);
 
         // TODO: this two instructions are the same
         //obtain_next_available_block_address(remaining_block) = next_block;

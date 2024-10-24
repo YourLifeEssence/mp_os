@@ -117,7 +117,6 @@ client_logger::client_logger(const std::map<std::string, unsigned char>& map, co
     }
 }
 
-//...
 void client_logger::decrement_Stream(std::map<std::string, unsigned char>::iterator& iterPaths)
 {
     auto iterStreams = _streams.find(iterPaths->first);
@@ -142,41 +141,131 @@ std::string client_logger::current_Date_toString() noexcept
     return stream_str.str();
 }
 
+std::string client_logger::current_Time_toString() noexcept
+{
+    auto time = std::time(nullptr);
+    std::ostringstream stream_str;
+    stream_str << std::put_time(std::localtime(&time), "%d.%m.%Y");
+    return stream_str.str();
+}
 
+std::string client_logger::get_OutputString(const std::string& message, logger::severity severity) const 
+{
+    std::string res;
+    auto ptr = _outputFormat.begin();
+    while (ptr != _outputFormat.end()) 
+    {
+        if (*ptr == '%')
+        {
+            ++ptr;
+            if (ptr == _outputFormat.end()) 
+            {
+                throw std::logic_error("Format error!");
+            }
+
+            switch (*ptr) 
+            {
+            case 'd':
+                res += current_Date_toString();
+                break;
+            case 't':
+                res += current_Time_toString();
+                break;
+            case 's':
+                res += logger::severity_to_string(severity);
+                break;
+            case 'm':
+                res += message;
+                break;
+            default:
+                throw std::logic_error("Unknown modificator");
+                break;
+            }
+        }
+        else res.push_back(*ptr);
+        ++ptr;
+    }
+    return res;
+}
+
+void client_logger::check_Unique_File(const client_logger& other) {
+    auto iterSeverity = _severities.begin();
+    while (iterSeverity != _severities.end()) {
+        if (other._severities.find(iterSeverity->first) == other._severities.end()) {
+            decrement_Stream(iterSeverity);
+        }
+        ++iterSeverity;
+    }
+}
 
 
 client_logger::client_logger(
-    const client_logger &other)
+    const client_logger &other) :
+    _severities(other._severities)
 {
-    throw not_implemented("client_logger::client_logger(client_logger const &other)", "your code should be here...");
+    auto iterSeverities = _severities.begin();
+
+    while (iterSeverities != _severities.end())
+    {
+        ++(_streams.find(iterSeverities->first)->second.countLoggers);
+        ++iterSeverities;
+    }
 }
     
 client_logger &client_logger::operator=(
-    const client_logger &other)
+    const client_logger &other) 
 {
-    throw not_implemented("client_logger &client_logger::operator=(client_logger const &other)", "your code should be here...");
+    if (this != &other)
+    {
+        check_Unique_File(other);
+        _severities = other._severities;
+        _outputFormat = other._outputFormat;
+    }
+    return *this;
 }
 
 client_logger::client_logger(
-    client_logger &&other) noexcept
-{
-    throw not_implemented("client_logger::client_logger(client_logger &&other) noexcept", "your code should be here...");
-}
+    client_logger &&other) noexcept :
+    _severities(std::move(other._severities)),
+    _outputFormat(std::move(other._outputFormat)) {}
 
 client_logger &client_logger::operator=(
     client_logger &&other) noexcept
 {
-    throw not_implemented("client_logger &client_logger::operator=(client_logger &&other) noexcept", "your code should be here...");
+    if (this != &other) {
+        check_Unique_File(other);
+        _severities = std::move(other._severities);
+        _outputFormat = std::move(other._outputFormat);
+    }
+    return *this;
 }
 
 client_logger::~client_logger() noexcept
 {
-    throw not_implemented("client_logger::~client_logger() noexcept", "your code should be here...");
+    auto iterPaths = _severities.begin();
+    while (iterPaths != _severities.end()) {
+        decrement_Stream(iterPaths);
+        ++iterPaths;
+    }
 }
 
-const logger *client_logger::log(
+const logger* client_logger::log(
     const std::string &text,
     logger::severity severity) const noexcept
 {
-    throw not_implemented("logger const *client_logger::log(const std::string &text, logger::severity severity) const noexcept", "your code should be here...");
+    auto iterSev = _severities.begin();
+    while (iterSev != _severities.end()) {
+        if (((iterSev->second) >> static_cast<int>(severity)) & 1) {
+            if (iterSev->first == "cerr") {
+                std::cerr << get_OutputString(text, severity) << std::endl;
+                ++iterSev;
+                continue;
+            }
+            auto& target_stream = _streams.find(iterSev->first)->second;
+            target_stream << get_OutputString(text, severity) << std::endl;
+            target_stream._str->flush();
+        }
+        ++iterSev;
+    }
+    return this;
 }

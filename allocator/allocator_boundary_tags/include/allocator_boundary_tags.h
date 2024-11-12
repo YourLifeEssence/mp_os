@@ -73,6 +73,15 @@ private:
     
     inline std::string get_typename() const noexcept override;
     
+private: //  beginning
+    
+    static constexpr size_t get_available_block_meta_size();
+
+    static constexpr size_t get_ancillary_block_meta_size();
+
+    static constexpr size_t common_medata_size();
+
+
 };
 
 #endif //MATH_PRACTICE_AND_OPERATING_SYSTEMS_ALLOCATOR_ALLOCATOR_BOUNDARY_TAGS_H

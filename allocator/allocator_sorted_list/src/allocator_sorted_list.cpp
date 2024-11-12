@@ -125,8 +125,6 @@ allocator_sorted_list::allocator_sorted_list(
     obtain_next_available_block_address(obtain_first_available_block_address_byref()) = nullptr;
 
     *reinterpret_cast<size_t*>(reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) + 1) = space_size - available_block_metadata_size();
-
-    // TODO: logs ....  =)
 }
 
 [[nodiscard]] void* allocator_sorted_list::allocate(

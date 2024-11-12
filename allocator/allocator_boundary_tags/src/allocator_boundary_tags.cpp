@@ -2,6 +2,8 @@
 
 #include "../include/allocator_boundary_tags.h"
 
+#include <mutex>
+
 allocator_boundary_tags::~allocator_boundary_tags()
 {
     throw not_implemented("allocator_boundary_tags::~allocator_boundary_tags()", "your code should be here...");
@@ -37,7 +39,24 @@ allocator_boundary_tags::allocator_boundary_tags(
     logger *logger,
     allocator_with_fit_mode::fit_mode allocate_fit_mode)
 {
-    throw not_implemented("allocator_boundary_tags::allocator_boundary_tags(size_t, allocator *, logger *, allocator_with_fit_mode::fit_mode)", "your code should be here...");
+
+
+    if (space_size < get_available_block_meta_size()) {
+        logger->log("The allocated memory is not enough to accommodate metadata", logger::severity::error);
+        throw std::logic_error("Can't initialize allocator instance");
+    }
+
+    size_t memory_size = space_size + common_medata_size();
+
+    try
+    {
+        _trusted_memory = parent_allocator == nullptr ? ::operator new(memory_size) : parent_allocator->allocate(1, memory_size);
+    }
+    catch (const std::bad_alloc& e)
+    {
+        logger->log("Error allocate of the memory", logger::severity::critical);
+        throw;
+    }
 }
 
 [[nodiscard]] void *allocator_boundary_tags::allocate(
@@ -77,4 +96,16 @@ inline logger *allocator_boundary_tags::get_logger() const
 inline std::string allocator_boundary_tags::get_typename() const noexcept
 {
     throw not_implemented("inline std::string allocator_boundary_tags::get_typename() const noexcept", "your code should be here...");
+}
+// beginning 
+static constexpr size_t get_available_block_meta_size() {
+    return sizeof(bool) + sizeof(void*) + sizeof(size_t);
+}
+
+static constexpr size_t get_ancillary_block_meta_size() {
+    return sizeof(bool) + sizeof(void*) + sizeof(size_t);
+}
+
+static constexpr size_t common_medata_size() {
+    return sizeof(allocator*) + sizeof(logger*) + sizeof(std::mutex) + sizeof(allocator_with_fit_mode::fit_mode) + sizeof(size_t) + sizeof(void*);
 }

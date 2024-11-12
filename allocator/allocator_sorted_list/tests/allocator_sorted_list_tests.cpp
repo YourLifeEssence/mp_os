@@ -277,6 +277,7 @@ int main(
     log.add_output_format("[%t %d %s] %m");
     logger* b = log.build();
 
+
     try
     {
         allocator_sorted_list* Obj1 = new allocator_sorted_list(50, nullptr, b, allocator_with_fit_mode::fit_mode::first_fit);

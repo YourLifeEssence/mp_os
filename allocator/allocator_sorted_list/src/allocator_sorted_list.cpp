@@ -24,15 +24,43 @@ allocator_sorted_list::~allocator_sorted_list() noexcept
 }
 
 allocator_sorted_list::allocator_sorted_list(
-    allocator_sorted_list&& other) noexcept
+    allocator_sorted_list&& other) noexcept :
+    _trusted_memory(nullptr)
 {
-    throw not_implemented("allocator_sorted_list::allocator_sorted_list(allocator_sorted_list &&) noexcept", "your code should be here...");
+    if (other._trusted_memory == nullptr)
+        return;
+
+    reinterpret_cast<std::mutex*>(reinterpret_cast<unsigned char *>(other._trusted_memory) + sizeof(allocator*) + sizeof(logger*))->lock();
+    _trusted_memory = other._trusted_memory;
+    other._trusted_memory = nullptr;
+    reinterpret_cast<std::mutex*>(reinterpret_cast<unsigned char *>(other._trusted_memory) + sizeof(allocator*) + sizeof(logger*))->unlock();
 }
 
 allocator_sorted_list& allocator_sorted_list::operator=(
     allocator_sorted_list&& other) noexcept
 {
-    throw not_implemented("allocator_sorted_list &allocator_sorted_list::operator=(allocator_sorted_list &&) noexcept", "your code should be here...");
+    if (this != &other) {
+        std::mutex* other_mutex = reinterpret_cast<std::mutex*>(reinterpret_cast<unsigned char*>(other._trusted_memory) + sizeof(allocator*) + sizeof(logger*));
+        std::lock_guard<std::mutex> locker(*other_mutex);
+
+        if (_trusted_memory != nullptr) {
+            auto cop_trusted_memory = reinterpret_cast<unsigned char*>(_trusted_memory);
+
+            reinterpret_cast<std::mutex*>(cop_trusted_memory + sizeof(allocator*) + sizeof(logger*))->~mutex();
+
+            auto alloc_ptr = *(reinterpret_cast<allocator**>(cop_trusted_memory));
+
+            if (alloc_ptr == nullptr) {
+                ::operator delete (_trusted_memory);
+            }
+            else {
+                alloc_ptr->deallocate(_trusted_memory);
+            }
+        }
+        _trusted_memory = other._trusted_memory;
+        other._trusted_memory = nullptr;
+    }
+    return *this;
 }
 
 allocator_sorted_list::allocator_sorted_list(
@@ -41,22 +69,31 @@ allocator_sorted_list::allocator_sorted_list(
     logger* logger,
     allocator_with_fit_mode::fit_mode allocate_fit_mode)
 {
-    if (space_size < available_block_metadata_size())
-    {
-        throw std::logic_error("Can't initialize allocator instance");
-    }
-
-    size_t memory_size = space_size + common_metadata_size();
     try
     {
+        if (space_size < available_block_metadata_size()){
+            
+            throw std::logic_error("Can't initialize allocator instance\n");
+        }
+
+        size_t memory_size = space_size + common_metadata_size();
+
         _trusted_memory = parent_allocator == nullptr
             ? ::operator new (memory_size)
             : parent_allocator->allocate(1, memory_size);
     }
-    catch (std::bad_alloc const& ex)
+    catch (const std::bad_alloc& ex)
     {
-        // TODO: logs ....   =)
-
+        logger->log("Error allocate of the memory\n" + std::string(ex.what()), logger::severity::critical);
+        throw;
+    }
+    catch (const std::logic_error& ex) 
+    {
+        logger->log("The allocated memory is not enough to accommodate metadata\n" + std::string(ex.what()), logger::severity::error);
+        throw;
+    }
+    catch (const std::exception& ex)
+    {
         throw;
     }
 
@@ -134,17 +171,10 @@ allocator_sorted_list::allocator_sorted_list(
             current_block = obtain_next_available_block_address(current_block);
         }
     }
-
-    //Left the block, local variables are not needed
-    //Implement block allocation
-    //Logically: We take the block on the left, from the first of our block meta data fill, separate some piece of memory, and after this piece of memory put again the data meta
-
-    //*reinterpret_cast<void**>(target_block) = obtain_next_available_block_address(target_block);  //Pointer to next free block
-
+   
     if (target_block == nullptr)
     {
-        // TODO: logs ....  =)
-
+        error_with_guard("error, the block for memory allocation was not found\n");
         throw std::bad_alloc();
     }
 
@@ -268,7 +298,15 @@ inline allocator* allocator_sorted_list::get_allocator() const
 
 std::vector<allocator_test_utils::block_info> allocator_sorted_list::get_blocks_info() const noexcept
 {
-    throw not_implemented("std::vector<allocator_test_utils::block_info> allocator_sorted_list::get_blocks_info() const noexcept", "your code should be here...");
+    std::vector<allocator_test_utils::block_info> arr;
+    size_t size = *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory));
+    void* pNow = *obtain_first_available_block_address_byptr(), * pLast = reinterpret_cast<unsigned char*>(_trusted_memory) + size;
+    while (pNow < pLast) {
+        auto blockSize = *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(pNow) + sizeof(void*));
+        arr.emplace_back(blockSize, (*reinterpret_cast<void**> (pNow) == _trusted_memory));
+        pNow = reinterpret_cast<unsigned char*> (pNow) + blockSize;
+    }
+    return arr;
 }
 
 inline logger* allocator_sorted_list::get_logger() const
@@ -278,7 +316,7 @@ inline logger* allocator_sorted_list::get_logger() const
 
 inline std::string allocator_sorted_list::get_typename() const noexcept
 {
-    throw not_implemented("inline std::string allocator_sorted_list::get_typename() const noexcept", "your code should be here...");
+    return "allocator_sorted_list";
 }
 
 size_t& allocator_sorted_list::obtain_trusted_memory_size() const

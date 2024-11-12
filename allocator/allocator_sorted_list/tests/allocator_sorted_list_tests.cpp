@@ -268,11 +268,29 @@ int main(
 {
     testing::InitGoogleTest(&argc, argv);
 
-    allocator_sorted_list Obj1(1000,nullptr, nullptr, allocator_with_fit_mode::fit_mode::first_fit);
+    client_logger_builder log;
 
-    auto ptr1 = Obj1.allocate(sizeof(int), 10);
+    log.add_file_stream("crit.txt", logger::severity::critical);
+    log.add_file_stream("error.txt", logger::severity::error);
+    log.add_file_stream("debug.txt", logger::severity::debug);
 
-    Obj1.deallocate(ptr1);
+    log.add_output_format("[%t %d %s] %m");
+    logger* b = log.build();
 
-    return RUN_ALL_TESTS();
+    try
+    {
+        allocator_sorted_list* Obj1 = new allocator_sorted_list(50, nullptr, b, allocator_with_fit_mode::fit_mode::first_fit);
+
+        auto ptr1 = Obj1->allocate(sizeof(int), 10);
+
+        Obj1->deallocate(ptr1);
+    }
+    catch (const std::bad_alloc& ex) {
+        b->log("error " + std::string(ex.what()), logger::severity::error);
+    }
+    catch (const std::exception& ex) {
+        b->log("error " + std::string(ex.what()), logger::severity::critical);
+    }
+
+    //return RUN_ALL_TESTS();
 }

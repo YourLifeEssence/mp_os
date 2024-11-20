@@ -81,6 +81,27 @@ private: //  beginning
 
     static constexpr size_t common_medata_size();
 
+    inline size_t get_allocator_shift() const;
+
+    inline size_t get_logger_shift() const;
+
+    inline size_t get_mutex_shift() const;
+
+    inline size_t get_fit_mode_shift() const;
+
+    inline size_t get_size_shift() const;
+
+    inline size_t get_void_ptr_shift() const;
+
+    std::mutex& obtain_synchronizer() const;
+
+    void clear_memory();
+
+    void throw_if_allocator_instance_state_was_moved() const;
+
+    void* allocate_with_first_fit(size_t);
+
+    void*& get_first_block() const;
 
 };
 

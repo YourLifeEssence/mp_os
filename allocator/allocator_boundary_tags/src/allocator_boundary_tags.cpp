@@ -1,36 +1,47 @@
 #include <not_implemented.h>
 
-#include "../include/allocator_boundary_tags.h"
-
 #include <mutex>
+
+#include "../include/allocator_boundary_tags.h"
 
 allocator_boundary_tags::~allocator_boundary_tags()
 {
-    throw not_implemented("allocator_boundary_tags::~allocator_boundary_tags()", "your code should be here...");
+    debug_with_guard("Entrance in the destructor");
+
+    clear_memory();
+
+    debug_with_guard("Exited the destructor");
 }
 
 allocator_boundary_tags::allocator_boundary_tags(
-    allocator_boundary_tags const &other)
+    allocator_boundary_tags &&other) noexcept :
+    _trusted_memory(nullptr)
 {
-    throw not_implemented("allocator_boundary_tags::allocator_boundary_tags(allocator_boundary_tags const &)", "your code should be here...");
-}
+    //is it necessary?
+    /*if (other._trusted_memory == nullptr)
+        return *this; */
 
-allocator_boundary_tags &allocator_boundary_tags::operator=(
-    allocator_boundary_tags const &other)
-{
-    throw not_implemented("allocator_boundary_tags &allocator_boundary_tags::operator=(allocator_boundary_tags const &)", "your code should be here...");
-}
-
-allocator_boundary_tags::allocator_boundary_tags(
-    allocator_boundary_tags &&other) noexcept
-{
-    throw not_implemented("allocator_boundary_tags::allocator_boundary_tags(allocator_boundary_tags &&) noexcept", "your code should be here...");
+    std::lock_guard<std::mutex> lock(obtain_synchronizer());
+    _trusted_memory = other._trusted_memory;
+    other._trusted_memory = nullptr;
 }
 
 allocator_boundary_tags &allocator_boundary_tags::operator=(
     allocator_boundary_tags &&other) noexcept
 {
-    throw not_implemented("allocator_boundary_tags &allocator_boundary_tags::operator=(allocator_boundary_tags &&) noexcept", "your code should be here...");
+    //is it necessary?
+    /*if (other._trusted_memory == nullptr)
+        return *this; */
+
+    if (this != &other) {
+        std::lock_guard<std::mutex> lock(obtain_synchronizer());
+
+        clear_memory();
+
+        _trusted_memory = other._trusted_memory;
+        other._trusted_memory = nullptr;
+    }
+    return *this;
 }
 
 allocator_boundary_tags::allocator_boundary_tags(
@@ -57,13 +68,42 @@ allocator_boundary_tags::allocator_boundary_tags(
         logger->log("Error allocate of the memory", logger::severity::critical);
         throw;
     }
+
+    allocator** parent_allocator_placement = reinterpret_cast<allocator**>(_trusted_memory);
+    *parent_allocator_placement = parent_allocator;
+
+    class logger** logger_placement = reinterpret_cast<class logger**>(parent_allocator_placement + 1);
+    *logger_placement = logger;
+
+    std::mutex* synchronizer_placement = reinterpret_cast<std::mutex*>(logger_placement + 1);
+    new (reinterpret_cast<void*>(synchronizer_placement)) std::mutex();
+
+    unsigned char* placement = reinterpret_cast<unsigned char*>(synchronizer_placement);
+
+    placement += sizeof(std::mutex);
+    *reinterpret_cast<allocator_with_fit_mode::fit_mode*>(placement) = allocate_fit_mode;
+
+    placement += sizeof(allocator_with_fit_mode::fit_mode);
+    *reinterpret_cast<size_t*>(placement) = space_size;
+
+    placement += sizeof(size_t);
+    *reinterpret_cast<void**>(placement) = placement + sizeof(void*);
+
+    //TODO : finish it :::: 1)allocate   2)func allocate_with_fit_mode....   3)constructor (this) -> from allocator_sorted_list with func 121 and 125 rows
+
 }
 
 [[nodiscard]] void *allocator_boundary_tags::allocate(
     size_t value_size,
     size_t values_count)
 {
-    throw not_implemented("[[nodiscard]] void *allocator_boundary_tags::allocate(size_t, size_t)", "your code should be here...");
+    throw_if_allocator_instance_state_was_moved();
+
+    std::lock_guard<std::mutex> lock(obtain_synchronizer());
+
+    auto requsted_size = value_size * values_count + get_available_block_meta_size();
+
+    ...
 }
 
 void allocator_boundary_tags::deallocate(
@@ -75,12 +115,20 @@ void allocator_boundary_tags::deallocate(
 inline void allocator_boundary_tags::set_fit_mode(
     allocator_with_fit_mode::fit_mode mode)
 {
-    throw not_implemented("inline void allocator_boundary_tags::set_fit_mode(allocator_with_fit_mode::fit_mode)", "your code should be here...");
+    if (_trusted_memory == nullptr)
+        return;
+
+    std::lock_guard<std::mutex> lock(obtain_synchronizer());
+
+    *reinterpret_cast<allocator_with_fit_mode::fit_mode*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_mutex_shift()) = mode;
 }
 
 inline allocator *allocator_boundary_tags::get_allocator() const
 {
-    throw not_implemented("inline allocator *allocator_boundary_tags::get_allocator() const", "your code should be here...");
+    if (_trusted_memory == nullptr)
+        return nullptr;
+
+    return *reinterpret_cast<allocator**>(_trusted_memory);
 }
 
 std::vector<allocator_test_utils::block_info> allocator_boundary_tags::get_blocks_info() const noexcept
@@ -90,22 +138,89 @@ std::vector<allocator_test_utils::block_info> allocator_boundary_tags::get_block
 
 inline logger *allocator_boundary_tags::get_logger() const
 {
-    throw not_implemented("inline logger *allocator_boundary_tags::get_logger() const", "your code should be here...");
+    if (_trusted_memory == nullptr)
+        return nullptr;
+
+    return *reinterpret_cast<logger**>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_allocator_shift());
 }
 
 inline std::string allocator_boundary_tags::get_typename() const noexcept
 {
-    throw not_implemented("inline std::string allocator_boundary_tags::get_typename() const noexcept", "your code should be here...");
+    return "allocator_boundary_tags";
 }
+
 // beginning 
-static constexpr size_t get_available_block_meta_size() {
-    return sizeof(bool) + sizeof(void*) + sizeof(size_t);
+constexpr size_t allocator_boundary_tags::get_available_block_meta_size() {
+    return 2 * sizeof(bool) + 2 * sizeof(void*) + 2 * sizeof(size_t);
 }
 
-static constexpr size_t get_ancillary_block_meta_size() {
-    return sizeof(bool) + sizeof(void*) + sizeof(size_t);
+constexpr size_t allocator_boundary_tags::get_ancillary_block_meta_size() {
+    return 2 * sizeof(bool) + 2 * sizeof(void*) + 2 * sizeof(size_t);
 }
 
-static constexpr size_t common_medata_size() {
+constexpr size_t allocator_boundary_tags::common_medata_size() {
     return sizeof(allocator*) + sizeof(logger*) + sizeof(std::mutex) + sizeof(allocator_with_fit_mode::fit_mode) + sizeof(size_t) + sizeof(void*);
+}
+
+inline size_t allocator_boundary_tags::get_allocator_shift() const{
+    return sizeof(allocator*);
+}
+
+inline size_t allocator_boundary_tags::get_logger_shift() const{
+    return get_allocator_shift() + sizeof(logger*);
+}
+
+inline size_t allocator_boundary_tags::get_mutex_shift() const {
+    return get_logger_shift() + sizeof(std::mutex);
+}
+
+inline size_t allocator_boundary_tags::get_fit_mode_shift() const {
+    return get_mutex_shift() + sizeof(allocator_with_fit_mode::fit_mode);
+}
+
+inline size_t allocator_boundary_tags::get_size_shift() const {
+    return get_fit_mode_shift() + sizeof(size_t);
+}
+
+inline size_t allocator_boundary_tags::get_void_ptr_shift() const {
+    return get_size_shift() + sizeof(void*);
+}
+
+std::mutex& allocator_boundary_tags::obtain_synchronizer() const {
+    return *reinterpret_cast<std::mutex*>(const_cast<unsigned char*>(reinterpret_cast<unsigned char const*>(_trusted_memory) + get_logger_shift()));
+}
+
+void allocator_boundary_tags::clear_memory() {
+    debug_with_guard("Entrance in the func: clear_memory");
+    if (_trusted_memory == nullptr)
+        return;
+
+    destruct(&obtain_synchronizer()); //Delete mutex
+
+    if (get_allocator() == nullptr) { //Clearing memory
+        ::operator delete(_trusted_memory);
+        debug_with_guard("in if ( get_allocator() == nullptr )");
+    }
+    else {
+        get_allocator()->deallocate(_trusted_memory);
+        debug_with_guard("in else ( get_allocator() != nullptr )");
+    }
+
+    _trusted_memory = nullptr;
+    debug_with_guard("Exited the func: clear_memory");
+}
+
+void allocator_boundary_tags::throw_if_allocator_instance_state_was_moved() const {
+    if (_trusted_memory == nullptr)
+    {
+        throw std::logic_error("Allocator instance state was moved :/");
+    }
+}
+
+void* allocator_boundary_tags::allocate_with_first_fit(size_t sizeNewBlock) {
+    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + ...
+}
+
+void*& allocator_boundary_tags::get_first_block() const {
+    return *reinterpret_cast<void**>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_size_shift());
 }

@@ -18,8 +18,10 @@ allocator_boundary_tags::allocator_boundary_tags(
     _trusted_memory(nullptr)
 {
     //is it necessary?
-    /*if (other._trusted_memory == nullptr)
-        return *this; */
+    if (other._trusted_memory == nullptr) {
+        debug_with_guard("other object is empty");
+        throw std::logic_error("Other obj can't be empty");
+    }
 
     std::lock_guard<std::mutex> lock(obtain_synchronizer());
     _trusted_memory = other._trusted_memory;
@@ -30,8 +32,10 @@ allocator_boundary_tags &allocator_boundary_tags::operator=(
     allocator_boundary_tags &&other) noexcept
 {
     //is it necessary?
-    /*if (other._trusted_memory == nullptr)
-        return *this; */
+    if (other._trusted_memory == nullptr){
+        debug_with_guard("other object is empty");
+        throw std::logic_error("Other obj can't be empty");
+    }
 
     if (this != &other) {
         std::lock_guard<std::mutex> lock(obtain_synchronizer());
@@ -57,7 +61,7 @@ allocator_boundary_tags::allocator_boundary_tags(
         throw std::logic_error("Can't initialize allocator instance");
     }
 
-    size_t memory_size = space_size + common_medata_size();
+    size_t memory_size = space_size + common_medata_size() + get_available_block_meta_size();
 
     try
     {
@@ -84,12 +88,15 @@ allocator_boundary_tags::allocator_boundary_tags(
     *reinterpret_cast<allocator_with_fit_mode::fit_mode*>(placement) = allocate_fit_mode;
 
     placement += sizeof(allocator_with_fit_mode::fit_mode);
-    *reinterpret_cast<size_t*>(placement) = space_size;
+    *reinterpret_cast<size_t*>(placement) = memory_size;
 
     placement += sizeof(size_t);
     *reinterpret_cast<void**>(placement) = placement + sizeof(void*);
 
-    //TODO : finish it :::: 1)allocate   2)func allocate_with_fit_mode....   3)constructor (this) -> from allocator_sorted_list with func 121 and 125 rows
+    *reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) = nullptr;
+
+    *reinterpret_cast<size_t*>(reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) + 1) = memory_size - get_available_block_meta_size();
+    //TODO : finish it :::: 1)allocate   2)func allocate_with_fit_mode....
 
 }
 
@@ -218,9 +225,27 @@ void allocator_boundary_tags::throw_if_allocator_instance_state_was_moved() cons
 }
 
 void* allocator_boundary_tags::allocate_with_first_fit(size_t sizeNewBlock) {
-    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + ...
+    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + get_void_ptr_shift();
+    unsigned char* last_block = reinterpret_cast<unsigned char*>(_trusted_memory) + *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift());
+    while (current_block < last_block) {
+        auto sizeOfBlock = *reinterpret_cast<size_t*>(current_block + get_size_block_shift());
+        if (!*reinterpret_cast<bool*>(current_block + get_status_block_shift())) {
+            ...
+        }
+        current_block += sizeOfBlock;
+    }
+    throw std::bad_alloc();
+    }
 }
 
 void*& allocator_boundary_tags::get_first_block() const {
     return *reinterpret_cast<void**>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_size_shift());
+}
+
+constexpr size_t allocator_boundary_tags::get_status_block_shift() {
+    return sizeof(void*);
+}
+
+constexpr size_t allocator_boundary_tags::get_size_block_shift() {
+    return get_status_Block_Shift() + sizeof(bool);
 }

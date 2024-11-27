@@ -101,11 +101,20 @@ private: //  beginning
 
     void* allocate_with_first_fit(size_t);
 
+    void* allocate_with_worst_fit(size_t);
+
+    void* allocate_with_best_fit(size_t);
+
     void*& get_first_block() const;
 
     constexpr size_t get_status_block_shift();
 
     constexpr size_t get_size_block_shift();
+
+    void* allocateBlock(unsigned char* block, size_t sizeNewBlock);
+
+    void* allocateFullBlock(unsigned char*);
+
 };
 
 #endif //MATH_PRACTICE_AND_OPERATING_SYSTEMS_ALLOCATOR_ALLOCATOR_BOUNDARY_TAGS_H

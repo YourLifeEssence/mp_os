@@ -55,7 +55,6 @@ allocator_boundary_tags::allocator_boundary_tags(
     allocator_with_fit_mode::fit_mode allocate_fit_mode)
 {
 
-
     if (space_size < get_available_block_meta_size()) {
         logger->log("The allocated memory is not enough to accommodate metadata", logger::severity::error);
         throw std::logic_error("Can't initialize allocator instance");
@@ -89,39 +88,85 @@ allocator_boundary_tags::allocator_boundary_tags(
 
     placement += sizeof(allocator_with_fit_mode::fit_mode);
     *reinterpret_cast<size_t*>(placement) = memory_size;
-
+    //std::cout << space_size << " " << memory_size << " " << *reinterpret_cast<size_t*>(placement) << std::endl;
     placement += sizeof(size_t);
-    *reinterpret_cast<void**>(placement) = placement + sizeof(void*);
+    *reinterpret_cast<void**>(placement) = placement + sizeof(bool) + sizeof(void*);
+
+    *reinterpret_cast<bool*>(reinterpret_cast<unsigned char*>(placement) + sizeof(void*)) = false; //блок свободен
+
+    *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(placement) + sizeof(bool) + sizeof(void*)) = space_size;
 
     *reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) = nullptr;
 
-    *reinterpret_cast<size_t*>(reinterpret_cast<void**>(*reinterpret_cast<void**>(placement)) + 1) = memory_size - get_available_block_meta_size();
-    //TODO : finish it :::: 1)allocate   2)func allocate_with_fit_mode....
+    //second side meta
+    unsigned char* reverse_placement = reinterpret_cast<unsigned char*>(placement) + space_size - get_available_block_meta_size();
 
+    *reinterpret_cast<size_t*>(reverse_placement) = space_size;
+
+    reverse_placement += sizeof(size_t);
+    *reinterpret_cast<void**>(reverse_placement) = nullptr;
+
+    reverse_placement += sizeof(void*);
+    *reinterpret_cast<bool*>(reverse_placement) = false;
+
+    debug_with_guard("exit constr alloc");
 }
 
 [[nodiscard]] void *allocator_boundary_tags::allocate(
     size_t value_size,
     size_t values_count)
 {
+    debug_with_guard("entrance in allocate");
     throw_if_allocator_instance_state_was_moved();
 
     std::lock_guard<std::mutex> lock(obtain_synchronizer());
 
-    auto requsted_size = value_size * values_count + get_available_block_meta_size();
+    auto requested_size = value_size * values_count + get_available_block_meta_size();
 
-    ...
+    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + get_void_ptr_shift();
+    unsigned char* last_block = reinterpret_cast<unsigned char*>(_trusted_memory) + *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift());
+
+    allocator_with_fit_mode::fit_mode fit_mode = *reinterpret_cast<allocator_with_fit_mode::fit_mode*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_mutex_shift());
+
+    void* selected_block = nullptr;
+
+    switch (fit_mode) {
+    case allocator_with_fit_mode::fit_mode::first_fit :
+        debug_with_guard("entrance switch-case about fit mode - first fit");
+        selected_block = allocate_with_first_fit(requested_size);
+        break;
+    case allocator_with_fit_mode::fit_mode::the_best_fit :
+        debug_with_guard("entrance switch-case about fit mode - the best fit");
+        selected_block = allocate_with_best_fit(requested_size);
+        break;
+    case allocator_with_fit_mode::fit_mode::the_worst_fit :
+        debug_with_guard("entrance switch-case about fit mode - the worst fit");
+        selected_block = allocate_with_worst_fit(requested_size);
+        break;
+    default:
+        throw std::invalid_argument("Unknown fit mode");
+    }
+
+    if (selected_block) {
+        debug_with_guard("exited allocate");
+        return selected_block;
+    }
+    debug_with_guard("selected_block equal nullptr");
+    error_with_guard("error allocate memory in allocate - bad alloc\n");
+    throw std::bad_alloc();
 }
 
 void allocator_boundary_tags::deallocate(
     void *at)
 {
+    debug_with_guard("entrance dealloc");
     throw not_implemented("void allocator_boundary_tags::deallocate(void *)", "your code should be here...");
 }
 
 inline void allocator_boundary_tags::set_fit_mode(
     allocator_with_fit_mode::fit_mode mode)
 {
+    debug_with_guard("entrance set_fit_mode");
     if (_trusted_memory == nullptr)
         return;
 
@@ -148,7 +193,7 @@ inline logger *allocator_boundary_tags::get_logger() const
     if (_trusted_memory == nullptr)
         return nullptr;
 
-    return *reinterpret_cast<logger**>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_allocator_shift());
+    return *reinterpret_cast<class logger**>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_allocator_shift());
 }
 
 inline std::string allocator_boundary_tags::get_typename() const noexcept
@@ -225,17 +270,25 @@ void allocator_boundary_tags::throw_if_allocator_instance_state_was_moved() cons
 }
 
 void* allocator_boundary_tags::allocate_with_first_fit(size_t sizeNewBlock) {
+    std::cout << *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift()) << std::endl;
+
     unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + get_void_ptr_shift();
     unsigned char* last_block = reinterpret_cast<unsigned char*>(_trusted_memory) + *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift());
     while (current_block < last_block) {
-        auto sizeOfBlock = *reinterpret_cast<size_t*>(current_block + get_size_block_shift());
-        if (!*reinterpret_cast<bool*>(current_block + get_status_block_shift())) {
-            ...
+        auto size_Block = *reinterpret_cast<size_t*>(current_block + sizeof(void*));
+        bool if_true = *reinterpret_cast<bool*>(current_block + get_status_block_shift());
+        if (if_true) {
+
+            if (size_Block == sizeNewBlock) 
+                return allocateFullBlock(current_block);
+
+            if (size_Block > sizeNewBlock) 
+                return allocateBlock(current_block, sizeNewBlock);
         }
-        current_block += sizeOfBlock;
+        current_block += size_Block;
     }
+    debug_with_guard("error in allocate_with_first_fit");
     throw std::bad_alloc();
-    }
 }
 
 void*& allocator_boundary_tags::get_first_block() const {
@@ -247,5 +300,76 @@ constexpr size_t allocator_boundary_tags::get_status_block_shift() {
 }
 
 constexpr size_t allocator_boundary_tags::get_size_block_shift() {
-    return get_status_Block_Shift() + sizeof(bool);
+    return get_status_block_shift() + sizeof(bool);
+}
+
+void* allocator_boundary_tags::allocateBlock(unsigned char* block, size_t sizeNewBlock) {
+    auto sizeOfBlock = *reinterpret_cast<size_t*>(block + get_size_block_shift());
+    auto remainingSize = sizeOfBlock - sizeNewBlock - get_available_block_meta_size();
+
+    *reinterpret_cast<size_t*>(block + get_size_block_shift()) = sizeNewBlock;
+    *reinterpret_cast<bool*>(block + get_status_block_shift()) = true;
+
+    unsigned char* new_block = block + sizeNewBlock + get_available_block_meta_size();
+
+    *reinterpret_cast<size_t*>(new_block + get_size_block_shift()) = remainingSize;
+    *reinterpret_cast<bool*>(new_block + get_status_block_shift()) = false;
+
+    return block + get_size_block_shift();
+}
+
+void* allocator_boundary_tags::allocateFullBlock(unsigned char* block) {
+    *reinterpret_cast<bool*>(block + get_status_block_shift()) = true;
+
+    return block + get_size_block_shift();
+}
+
+void* allocator_boundary_tags::allocate_with_best_fit(size_t sizeNewBlock) {
+    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + get_void_ptr_shift();
+    unsigned char* last_block = reinterpret_cast<unsigned char*>(_trusted_memory) + *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift());
+
+    unsigned char* best_fit_block = nullptr;
+    size_t best_fit_size = SIZE_MAX;
+
+    while (current_block < last_block) {
+        auto sizeOfBlock = *reinterpret_cast<size_t*>(current_block + get_size_block_shift());
+        if (!*reinterpret_cast<bool*>(current_block + get_status_block_shift())) {
+            if (sizeOfBlock >= sizeNewBlock && sizeOfBlock < best_fit_size) {
+                best_fit_size = sizeOfBlock;
+                best_fit_block = current_block;
+            }
+        }
+        current_block += sizeOfBlock;
+    }
+
+    if (best_fit_block) {
+        return allocateBlock(best_fit_block, sizeNewBlock);
+    }
+    debug_with_guard("error in allocate_with_best_fit");
+    throw std::bad_alloc();
+}
+
+void* allocator_boundary_tags::allocate_with_worst_fit(size_t sizeNewBlock) {
+    unsigned char* current_block = reinterpret_cast<unsigned char*>(_trusted_memory) + get_void_ptr_shift();
+    unsigned char* last_block = reinterpret_cast<unsigned char*>(_trusted_memory) + *reinterpret_cast<size_t*>(reinterpret_cast<unsigned char*>(_trusted_memory) + get_fit_mode_shift());
+
+    unsigned char* worst_fit_block = nullptr;
+    size_t worst_fit_size = 0;
+
+    while (current_block < last_block) {
+        auto sizeOfBlock = *reinterpret_cast<size_t*>(current_block + get_size_block_shift());
+        if (!*reinterpret_cast<bool*>(current_block + get_status_block_shift())) {
+            if (sizeOfBlock >= sizeNewBlock && sizeOfBlock > worst_fit_size) {
+                worst_fit_size = sizeOfBlock;
+                worst_fit_block = current_block;
+            }
+        }
+        current_block += sizeOfBlock;
+    }
+
+    if (worst_fit_block) {
+        return allocateBlock(worst_fit_block, sizeNewBlock);
+    }
+    debug_with_guard("error in allocate_with_worst_fit");
+    throw std::bad_alloc();
 }

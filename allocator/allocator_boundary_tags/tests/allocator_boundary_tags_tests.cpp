@@ -124,7 +124,34 @@ int main(
     int argc,
     char *argv[])
 {
-    testing::InitGoogleTest(&argc, argv);
+    /*testing::InitGoogleTest(&argc, argv);
     
-    return RUN_ALL_TESTS();
+    return RUN_ALL_TESTS();*/
+
+    client_logger_builder log;
+
+    log.add_file_stream("crit.txt", logger::severity::critical);
+    log.add_file_stream("error.txt", logger::severity::error);
+    log.add_file_stream("debug.txt", logger::severity::debug);
+
+    log.add_output_format("[%t %d %s] %m");
+    logger* b = log.build();
+
+    try
+    {
+        allocator_boundary_tags* Obj1 = new allocator_boundary_tags(1000, nullptr, b, allocator_with_fit_mode::fit_mode::first_fit);
+
+        auto ptr1 = Obj1->allocate(sizeof(int), 10);
+
+        Obj1->deallocate(ptr1);
+    }
+    catch (const std::bad_alloc& ex) {
+        b->log("error " + std::string(ex.what()), logger::severity::error);
+    }
+    catch (const std::exception& ex) {
+        b->log("error " + std::string(ex.what()), logger::severity::critical);
+    }
+
+
+
 }
